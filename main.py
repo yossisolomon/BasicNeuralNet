@@ -1,4 +1,5 @@
 from numpy import exp, array, random, dot
+from scipy.special import expit
 
 
 class NeuronLayer():
@@ -7,15 +8,14 @@ class NeuronLayer():
 
 
 class NeuralNetwork():
-    def __init__(self, layer1, layer2):
-        self.layer1 = layer1
-        self.layer2 = layer2
+    def __init__(self, layers):
+        self.layers = layers
 
     # The Sigmoid function, which describes an S shaped curve.
     # We pass the weighted sum of the inputs through this function to
     # normalise them between 0 and 1.
     def __sigmoid(self, x):
-        return 1 / (1 + exp(-x))
+        return expit(x)
 
     # The derivative of the Sigmoid function.
     # This is the gradient of the Sigmoid curve.
@@ -28,43 +28,48 @@ class NeuralNetwork():
     def train(self, training_set_inputs, training_set_outputs, number_of_training_iterations):
         for iteration in xrange(number_of_training_iterations):
             # Pass the training set through our neural network
-            output_from_layer_1, output_from_layer_2 = self.think(training_set_inputs)
+            outputs = self.think(training_set_inputs)
 
-            # Calculate the error for layer 2 (The difference between the desired output
-            # and the predicted output).
-            layer2_error = training_set_outputs - output_from_layer_2
-            layer2_delta = layer2_error * self.__sigmoid_derivative(output_from_layer_2)
+            # Calculate the error for the last layer (The difference between
+            # the desired output and the predicted output).
+            curr_error = training_set_outputs - outputs[-1]
+            curr_delta = curr_error * self.__sigmoid_derivative(outputs[-1])
+            deltas = [curr_delta]
+            # Calculate the error for the previous layers (By looking at the
+            # weights in each layer, we can determine by how much that layer
+            # contributed to the error in the previous).
+            for i in reversed(xrange(len(self.layers)-1)):
+                layer_error = deltas[-1].dot(self.layers[i+1].synaptic_weights.T)
+                layer_delta = layer_error * self.__sigmoid_derivative(outputs[i])
+                deltas.append(layer_delta)
 
-            # Calculate the error for layer 1 (By looking at the weights in layer 1,
-            # we can determine by how much layer 1 contributed to the error in layer 2).
-            layer1_error = layer2_delta.dot(self.layer2.synaptic_weights.T)
-            layer1_delta = layer1_error * self.__sigmoid_derivative(output_from_layer_1)
+            # As we created the list in reverse order, we need to reverse it
+            # back to use it properly
+            deltas.reverse()
 
-            # Calculate how much to adjust the weights by
-            layer1_adjustment = training_set_inputs.T.dot(layer1_delta)
-            layer2_adjustment = output_from_layer_1.T.dot(layer2_delta)
+            curr_inputs = training_set_inputs
+            for i in xrange(len(self.layers)):
+                self.layers[i].synaptic_weights += curr_inputs.T.dot(deltas[i])
+                curr_inputs = outputs[i]
 
-            # Adjust the weights.
-            self.layer1.synaptic_weights += layer1_adjustment
-            self.layer2.synaptic_weights += layer2_adjustment
 
     # The neural network thinks.
     def think(self, inputs):
-        output_from_layer1 = self.__sigmoid(dot(inputs, self.layer1.synaptic_weights))
-        output_from_layer2 = self.__sigmoid(dot(output_from_layer1, self.layer2.synaptic_weights))
-        return output_from_layer1, output_from_layer2
+        outputs = []
+        curr_inputs = inputs
+        for layer in self.layers:
+            output = self.__sigmoid(dot(curr_inputs, layer.synaptic_weights))
+            outputs.append(output)
+            curr_inputs = output
+        return outputs
 
     # The neural network prints its weights
     def print_weights(self):
-        print "    Layer 1 (4 neurons, each with 3 inputs): "
-        print self.layer1.synaptic_weights
-        print "    Layer 2 (1 neuron, with 4 inputs):"
-        print self.layer2.synaptic_weights
+        print "Synaptic Weights for each layer:"
+        for layer in self.layers:
+            print layer.synaptic_weights
 
 if __name__ == "__main__":
-
-    #Seed the random number generator
-    random.seed()
 
     # Create layer 1 (4 neurons, each with 3 inputs)
     layer1 = NeuronLayer(4, 3)
@@ -73,7 +78,7 @@ if __name__ == "__main__":
     layer2 = NeuronLayer(1, 4)
 
     # Combine the layers to create a neural network
-    neural_network = NeuralNetwork(layer1, layer2)
+    neural_network = NeuralNetwork([layer1, layer2])
 
     print "Stage 1) Random starting synaptic weights: "
     neural_network.print_weights()
@@ -92,5 +97,5 @@ if __name__ == "__main__":
 
     # Test the neural network with a new situation.
     print "Stage 3) Considering a new situation [1, 1, 0] -> ?: "
-    hidden_state, output = neural_network.think(array([1, 1, 0]))
-    print output
+    outputs = neural_network.think(array([1, 1, 0]))
+    print outputs[-1]

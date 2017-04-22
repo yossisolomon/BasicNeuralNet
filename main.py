@@ -2,7 +2,7 @@ from numpy import exp, array, random, dot, delete, nditer, argmax
 from pandas import read_csv
 from sklearn.cross_validation import KFold
 from argparse import ArgumentParser
-
+import logging
 
 # The Sigmoid function, which describes an S shaped curve.
 # We pass the weighted sum of the inputs through this function to
@@ -78,9 +78,10 @@ class NeuralNetwork():
 
     # The neural network prints its weights
     def print_weights(self):
-        print "Synaptic Weights for each layer:"
+        string = """Synaptic Weights for each layer:"""
         for layer in self.layers:
-            print layer.synaptic_weights
+            string += str(layer.synaptic_weights) + "\n"
+        return string
 
 
 def number_to_layers(num):
@@ -125,6 +126,7 @@ def parse_args():
     parser.add_argument("--hidden-layers", type=int, choices=xrange(2),  default=0)
     parser.add_argument("--wine-type", choices=["red","white"], default="red")
     parser.add_argument("--learning-iterations", type=int, default=60000)
+    parser.add_argument("-d","--debug",action="store_true")
 
     return parser.parse_args()
 
@@ -132,14 +134,20 @@ if __name__ == "__main__":
 
     args = parse_args()
 
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.getLogger().setLevel(logging.INFO)
+
     wine_qual_filename = "winequality-%s.csv"%args.wine_type
+    logging.info("using file=%s"%wine_qual_filename)
     wine_qual = read_csv(wine_qual_filename,delimiter=";")
 
     kf = KFold(len(wine_qual), shuffle=True, n_folds=10)
 
     layers = number_to_layers(args.hidden_layers)
-    print "Using layers:"
-    print str(layers)
+    logging.info("Using layers:")
+    logging.info(layers)
 
     for train, test in kf:
 
@@ -147,8 +155,8 @@ if __name__ == "__main__":
         # Combine the layers to create a neural network
         neural_network = NeuralNetwork(layers)
 
-        print "Stage 1) Random starting synaptic weights: "
-        # neural_network.print_weights()
+        logging.debug("Stage 1) Random starting synaptic weights: ")
+        logging.debug(neural_network.print_weights())
 
         training_set = wine_qual.get_values()[train]
         training_set_inputs = delete(training_set,11,1)
@@ -156,11 +164,11 @@ if __name__ == "__main__":
         training_set_outputs = switch_output_type(training_set_outputs,number_to_array)
         neural_network.train(training_set_inputs, training_set_outputs, args.learning_iterations)
 
-        print "Stage 2) New synaptic weights after training: "
-        # neural_network.print_weights()
+        logging.debug("Stage 2) New synaptic weights after training: ")
+        logging.debug(neural_network.print_weights())
 
         # Test the neural network with a new situation.
-        print "Stage 3) Considering a new situation"
+        logging.debug("Stage 3) Evaluating a new situation")
         testing_set = wine_qual.get_values()[test]
         testing_set_inputs = delete(testing_set,11,1)
         testing_set_outputs = delete(testing_set,xrange(11),1)
@@ -172,5 +180,5 @@ if __name__ == "__main__":
         for d in nditer(diff):
             if not float(d) == 0.0:
                 diff_count += 1
-        print "Testing set size = " + str(len(testing_set))
-        print "diff count = " + str(diff_count)
+        logging.info("Testing set size = " + str(len(testing_set)))
+        logging.info("diff count = " + str(diff_count))

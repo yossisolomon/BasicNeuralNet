@@ -1,6 +1,7 @@
 from numpy import exp, array, random, dot, delete, nditer, argmax
 from pandas import read_csv
 from sklearn.cross_validation import KFold
+from argparse import ArgumentParser
 
 
 # The Sigmoid function, which describes an S shaped curve.
@@ -20,6 +21,15 @@ def sigmoid_derivative(x):
 class NeuronLayer():
     def __init__(self, number_of_neurons, number_of_inputs_per_neuron):
         self.synaptic_weights = 2 * random.random((number_of_inputs_per_neuron, number_of_neurons)) - 1
+
+    def __str__(self):
+        return "| layer: #inputs=%s #neurons=%s |"%self.synaptic_weights.shape
+
+    def __unicode__(self):
+        return u"%s"%self.__str__()
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class NeuralNetwork():
@@ -73,6 +83,15 @@ class NeuralNetwork():
             print layer.synaptic_weights
 
 
+def number_to_layers(num):
+    switcher = {
+        0: [NeuronLayer(10, 11)],
+        1: [NeuronLayer(20, 11),NeuronLayer(10, 20)],
+        2: [NeuronLayer(20, 11),NeuronLayer(30, 20),NeuronLayer(10, 30)]
+    }
+    return switcher[num]
+
+
 def number_to_array(num):
     num = float(num)
     switcher = {
@@ -100,21 +119,33 @@ def switch_output_type(initial_outputs, func):
         resulting_outputs.append(func(o))
     return array(resulting_outputs)
 
+
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument("--hidden-layers", type=int, choices=xrange(2),  default=0)
+    parser.add_argument("--wine-type", choices=["red","white"], default="red")
+    parser.add_argument("--learning-iterations", type=int, default=60000)
+
+    return parser.parse_args()
+
 if __name__ == "__main__":
 
-    wine_qual = read_csv("winequality-red.csv",delimiter=";")
+    args = parse_args()
 
-    kf = KFold(len(wine_qual), n_folds=10)
+    wine_qual_filename = "winequality-%s.csv"%args.wine_type
+    wine_qual = read_csv(wine_qual_filename,delimiter=";")
+
+    kf = KFold(len(wine_qual), shuffle=True, n_folds=10)
+
+    layers = number_to_layers(args.hidden_layers)
+    print "Using layers:"
+    print str(layers)
 
     for train, test in kf:
-        layer1 = NeuronLayer(10, 11)
-        # layer2 = NeuronLayer(10, 20)
-        # layer3 = NeuronLayer(5, 7)
-        # layer4 = NeuronLayer(3, 5)
-        # layer5 = NeuronLayer(1, 3)
+
 
         # Combine the layers to create a neural network
-        neural_network = NeuralNetwork([layer1])#,layer2,layer3,layer4,layer5])
+        neural_network = NeuralNetwork(layers)
 
         print "Stage 1) Random starting synaptic weights: "
         # neural_network.print_weights()
@@ -123,7 +154,7 @@ if __name__ == "__main__":
         training_set_inputs = delete(training_set,11,1)
         training_set_outputs = delete(training_set,xrange(11),1)
         training_set_outputs = switch_output_type(training_set_outputs,number_to_array)
-        neural_network.train(training_set_inputs, training_set_outputs, 60000)
+        neural_network.train(training_set_inputs, training_set_outputs, args.learning_iterations)
 
         print "Stage 2) New synaptic weights after training: "
         # neural_network.print_weights()
@@ -137,14 +168,9 @@ if __name__ == "__main__":
         vectored_outputs = neural_network.think(testing_set_inputs)
         outputs = switch_output_type(vectored_outputs[-1],array_to_number)
         diff = outputs - testing_set_outputs
-        # print outputs
-        # print testing_set_outputs
         diff_count = 0
         for d in nditer(diff):
-            # print d
             if not float(d) == 0.0:
                 diff_count += 1
         print "Testing set size = " + str(len(testing_set))
         print "diff count = " + str(diff_count)
-
-        # exit(0)

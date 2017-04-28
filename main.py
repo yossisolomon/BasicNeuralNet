@@ -38,8 +38,8 @@ class NeuralNetwork():
 
     # We train the neural network through a process of trial and error.
     # Adjusting the synaptic weights each time.
-    def train(self, training_set_inputs, training_set_outputs, number_of_training_iterations):
-        for iteration in xrange(number_of_training_iterations):
+    def train(self, training_set_inputs, training_set_outputs, number_of_training_iterations, rate):
+        for iteration in range(number_of_training_iterations):
             # Pass the training set through our neural network
             outputs = self.think(training_set_inputs)
 
@@ -52,8 +52,8 @@ class NeuralNetwork():
             # Calculate the error for the previous layers (By looking at the
             # weights in each layer, we can determine by how much that layer
             # contributed to the error in the previous).
-            for i in reversed(xrange(len(self.layers)-1)):
-                layer_error = deltas[-1].dot(self.layers[i+1].synaptic_weights.T)
+            for i in reversed(range(len(self.layers) - 1)):
+                layer_error = deltas[-1].dot(self.layers[i + 1].synaptic_weights.T)
                 layer_delta = layer_error * sigmoid_derivative(outputs[i])
                 deltas.append(layer_delta)
 
@@ -62,8 +62,8 @@ class NeuralNetwork():
             deltas.reverse()
 
             curr_inputs = training_set_inputs
-            for i in xrange(len(self.layers)):
-                self.layers[i].synaptic_weights += curr_inputs.T.dot(deltas[i])
+            for i in range(len(self.layers)):
+                self.layers[i].synaptic_weights += rate * curr_inputs.T.dot(deltas[i])
                 curr_inputs = outputs[i]
 
     # The neural network thinks.
@@ -121,11 +121,78 @@ def switch_output_type(initial_outputs, func):
     return array(resulting_outputs)
 
 
+def fold_train(input, layers, iters, rate):
+    folds = 10
+    kf = KFold(len(input), n_folds=folds, shuffle=True)
+    folds_error_sum = 0
+
+    for train, test in kf:
+        # Combine the layers to create a neural network
+        neural_network = NeuralNetwork(layers)
+
+        logging.debug("Stage 1) Random starting synaptic weights: ")
+        logging.debug(neural_network.print_weights())
+
+        training_set = input.get_values()[train]
+        training_set_inputs = delete(training_set,11,1)
+        training_set_outputs = delete(training_set,xrange(11),1)
+        training_set_outputs = switch_output_type(training_set_outputs,number_to_array)
+        neural_network.train(training_set_inputs, training_set_outputs, iters, rate)
+
+        logging.debug("Stage 2) New synaptic weights after training: ")
+        logging.debug(neural_network.print_weights())
+
+        # Test the neural network with a new situation.
+        logging.debug("Stage 3) Evaluating a new situation")
+        testing_set = input.get_values()[test]
+        testing_set_inputs = delete(testing_set,11,1)
+        testing_set_outputs = delete(testing_set,xrange(11),1)
+        testing_set_outputs = [float(o) for o in nditer(testing_set_outputs)]
+        vectored_outputs = neural_network.think(testing_set_inputs)
+        outputs = switch_output_type(vectored_outputs[-1],array_to_number)
+
+        diff = outputs - testing_set_outputs
+        diff_count = 0.0
+        for d in nditer(diff):
+            if not float(d) == 0.0:
+                diff_count += 1
+        logging.debug("Testing set size = " + str(len(testing_set)))
+        logging.debug("diff count = " + str(diff_count))
+        error = diff_count / len(test)
+        folds_error_sum += error
+
+    averaged_error = folds_error_sum / folds
+    logging.info("averaged error: " + str(averaged_error))
+    return averaged_error
+
+
+def grid_search(input, labels, iters, rates):
+    min_error = 1
+    best_rate = 0
+    best_iters = 0
+    for i in iters:
+        min_rate_error = 1
+        best_rate_for_iter = 0
+        for rate in rates:
+            logging.info("iterations = " + str(i) + " rate = " + str(rate))
+            rate_error = fold_train(input, labels, i, rate)
+            if rate_error < min_rate_error:
+                min_rate_error = rate_error
+                best_rate_for_iter = rate
+        logging.info("best rate for " + str(i) + " iterations is " + str(best_rate_for_iter) + " with error " + str(
+            min_rate_error))
+        if min_rate_error < min_error:
+            min_error = min_rate_error
+            best_iters = i
+            best_rate = best_rate_for_iter
+    logging.info("best error is " + str(min_error) + " for " + str(best_iters) + " iterations and " + str(best_rate) + " rate")
+
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--hidden-layers", type=int, choices=xrange(2),  default=0)
     parser.add_argument("--wine-type", choices=["red","white"], default="red")
-    parser.add_argument("--learning-iterations", type=int, default=60000)
+    # parser.add_argument("--learning-iterations", type=int, default=60000)
     parser.add_argument("-d","--debug",action="store_true")
 
     return parser.parse_args()
@@ -141,44 +208,14 @@ if __name__ == "__main__":
 
     wine_qual_filename = "winequality-%s.csv"%args.wine_type
     logging.info("using file=%s"%wine_qual_filename)
-    wine_qual = read_csv(wine_qual_filename,delimiter=";")
 
-    kf = KFold(len(wine_qual), shuffle=True, n_folds=10)
+    input = read_csv(wine_qual_filename, delimiter=";")
+
+    iters = [600, 6000, 60000]
+    rates = [0.4, 1, 1.5, 2, 2.5, 2.7, 3]
 
     layers = number_to_layers(args.hidden_layers)
     logging.info("Using layers:")
     logging.info(layers)
 
-    for train, test in kf:
-
-
-        # Combine the layers to create a neural network
-        neural_network = NeuralNetwork(layers)
-
-        logging.debug("Stage 1) Random starting synaptic weights: ")
-        logging.debug(neural_network.print_weights())
-
-        training_set = wine_qual.get_values()[train]
-        training_set_inputs = delete(training_set,11,1)
-        training_set_outputs = delete(training_set,xrange(11),1)
-        training_set_outputs = switch_output_type(training_set_outputs,number_to_array)
-        neural_network.train(training_set_inputs, training_set_outputs, args.learning_iterations)
-
-        logging.debug("Stage 2) New synaptic weights after training: ")
-        logging.debug(neural_network.print_weights())
-
-        # Test the neural network with a new situation.
-        logging.debug("Stage 3) Evaluating a new situation")
-        testing_set = wine_qual.get_values()[test]
-        testing_set_inputs = delete(testing_set,11,1)
-        testing_set_outputs = delete(testing_set,xrange(11),1)
-        testing_set_outputs = [float(o) for o in nditer(testing_set_outputs)]
-        vectored_outputs = neural_network.think(testing_set_inputs)
-        outputs = switch_output_type(vectored_outputs[-1],array_to_number)
-        diff = outputs - testing_set_outputs
-        diff_count = 0
-        for d in nditer(diff):
-            if not float(d) == 0.0:
-                diff_count += 1
-        logging.info("Testing set size = " + str(len(testing_set)))
-        logging.info("diff count = " + str(diff_count))
+    grid_search(input, layers, iters, rates)

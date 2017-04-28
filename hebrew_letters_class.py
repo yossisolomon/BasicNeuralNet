@@ -86,9 +86,7 @@ def number_to_array(num):
         5.0: array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
         6.0: array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0]),
         7.0: array([0, 0, 0, 0, 0, 0, 1, 0, 0, 0]),
-        8.0: array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),
-        9.0: array([0, 0, 0, 0, 0, 0, 0, 0, 1, 0]),
-        10.0: array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+        8.0: array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0])
     }
     return switcher[num]
 
@@ -141,7 +139,7 @@ def fold_train(input, labels, iters, rate):
         diff = outputs - testing_set_outputs
         # print outputs
         # print testing_set_outputs
-        diff_count = 0
+        diff_count = 0.0
         for d in nditer(diff):
             # print d
             if not float(d) == 0.0:
@@ -157,7 +155,7 @@ def fold_train(input, labels, iters, rate):
     return averaged_error
 
 
-def grid_search(input, labels, iters, rate):
+def grid_search(input, labels, iters, rates):
     min_error = 1
     best_rate = 0
     best_iters = 0
@@ -172,14 +170,14 @@ def grid_search(input, labels, iters, rate):
                 best_rate_for_iter = rate
         print("best rate for " + str(i) + " iterations is " + str(best_rate_for_iter) + " with error " + str(
             min_rate_error))
-        if (min_rate_error < min_error):
+        if min_rate_error < min_error:
             min_error = min_rate_error
             best_iters = i
             best_rate = best_rate_for_iter
     print("best error is " + str(min_error) + " for " + str(best_iters) + " iterations and " + str(best_rate) + " rate")
 
 
-def getLetterVector(root, file):
+def get_letter_vector(root, file):
     letter_file = open(os.path.join(root, file))
     vec = []
     for line in letter_file.readlines():
@@ -193,7 +191,8 @@ def getLetterVector(root, file):
             vec.append(l)
     return np.array(vec)
 
-def letterToNumber(letter):
+
+def letter_to_number(letter):
     if  'aleph' in letter:
             return 1
     elif 'alef' in letter:
@@ -216,10 +215,10 @@ def letterToNumber(letter):
         return 8
 
 
-def getNoisyVector(vec):
-    getRandomIndices = lambda: [random.randint(0, 255) for x in range(25)]
+def get_noisy_vector(vec):
+    get_random_indices = lambda: [random.randint(0, 255) for x in range(25)]
     a = vec.copy()
-    for i in getRandomIndices():
+    for i in get_random_indices():
         if a[i] == 1:
             a[i] = 0
         if a[i] == 0:
@@ -236,26 +235,26 @@ if __name__ == "__main__":
     for root, dirs, files in os.walk('hebrew_letters'):
         for file in files:
             letter = file.split('.')[0][:-1].lower()
-            letter_vector = np.reshape(getLetterVector(root, file), (16,16))
+            letter_vector = np.reshape(get_letter_vector(root, file), (16, 16))
 
-            label.append(letterToNumber(letter))
+            label.append(letter_to_number(letter))
             vectors.append(np.reshape(letter_vector, 256))
 
             #translate image by 1 in every direction
-            label.append(letterToNumber(letter))
+            label.append(letter_to_number(letter))
             vectors.append(np.reshape(np.roll(letter_vector, 1, axis=0), 256))
-            label.append(letterToNumber(letter))
+            label.append(letter_to_number(letter))
             vectors.append(np.reshape(np.roll(letter_vector, 1, axis=1), 256))
-            label.append(letterToNumber(letter))
+            label.append(letter_to_number(letter))
             vectors.append(np.reshape(np.roll(letter_vector, 15, axis=0), 256))
-            label.append(letterToNumber(letter))
+            label.append(letter_to_number(letter))
             vectors.append(np.reshape(np.roll(letter_vector, 15, axis=1), 256))
 
             #randomly flip 25 bits
             letter_vector = np.reshape(letter_vector, 256)
             for i in range(4):
-                vectors.append(getNoisyVector(letter_vector))
-                label.append(letterToNumber(letter))
+                vectors.append(get_noisy_vector(letter_vector))
+                label.append(letter_to_number(letter))
 
     vecs = np.vstack(vectors)
     grid_search(vecs, np.array(label), iters, rates)

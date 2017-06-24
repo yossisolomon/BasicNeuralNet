@@ -122,9 +122,9 @@ def switch_output_type(initial_outputs, func):
 
 
 def fold_train(input, layers, iters, rate):
-    folds = 10
+    folds = 10.0
     kf = KFold(len(input), n_folds=folds, shuffle=True)
-    folds_error_sum = 0
+    folds_error_sum = 0.0
 
     for train, test in kf:
         # Combine the layers to create a neural network
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     else:
         logging.getLogger().setLevel(logging.INFO)
 
-    wine_qual_filename = "winequality-%s.csv"%args.wine_type
+    wine_qual_filename = "hw1/winequality-%s.csv"%args.wine_type
     logging.info("using file=%s"%wine_qual_filename)
 
     input = read_csv(wine_qual_filename, delimiter=";")

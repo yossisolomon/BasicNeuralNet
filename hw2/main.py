@@ -1,13 +1,16 @@
-from numpy import exp, array, random, dot, array_equal
 from argparse import ArgumentParser
+from math import sqrt
 import logging
+from collections import namedtuple
 
+import numpy as np
 
+image_props = namedtuple('image_props', ['type', 'width' ,'height', 'depth'])
 # The Sigmoid function, which describes an S shaped curve.
 # We pass the weighted sum of the inputs through this function to
 # normalise them between 0 and 1.
 def sigmoid(x):
-    return 1 / (1 + exp(-x))
+    return 1 / (1 + np.exp(-x))
 
 
 # The derivative of the Sigmoid function.
@@ -19,7 +22,7 @@ def sigmoid_derivative(x):
 
 class NeuronLayer():
     def __init__(self, number_of_neurons, number_of_inputs_per_neuron):
-        self.synaptic_weights = 2 * random.random((number_of_inputs_per_neuron, number_of_neurons)) - 1
+        self.synaptic_weights = 2 * np.random.random((number_of_inputs_per_neuron, number_of_neurons)) - 1
 
     def __str__(self):
         return "| layer: #inputs=%s #neurons=%s |"%self.synaptic_weights.shape
@@ -70,7 +73,7 @@ class NeuralNetwork():
         outputs = []
         curr_inputs = inputs
         for layer in self.layers:
-            output = sigmoid(dot(curr_inputs, layer.synaptic_weights))
+            output = sigmoid(np.dot(curr_inputs, layer.synaptic_weights))
             outputs.append(output)
             curr_inputs = output
         return outputs
@@ -87,45 +90,42 @@ def read_pgm(filename):
     pgm = []
     with open(filename) as f:
         line = f.readline()
+        type = line
+        while not line[0] in ['0','1','2','3','4','5','6','7','8','9']:
+            line = f.readline()
         split_line = line.split()
         width = int(split_line[0])
         height = int(split_line[1])
+        depth = f.readline()
         for _ in xrange(width):
             arr = []
             for _ in xrange(height):
                 line = f.readline()
                 arr.append(int(line))
-            pgm.append(array(arr))
-    pgm2d = array(pgm)
+            pgm.append(np.array(arr))
+    pgm2d = np.array(pgm)
     assert pgm2d.shape == (width,height)
-    return pgm2d
+    return pgm2d, image_props(type,width, height, depth)
 
 
-def write_pgm(array, filename):
-    lines = ["P5\n","240 240\n"]
-    for i in array.flatten():
+def write_pgm(arr, filename):
+    lines = ["P2\n","240 240\n","255\n"]
+    for i in arr.flatten():
         lines.append(str(int(i))+"\n")
     with open(filename,'w') as f:
         f.writelines(lines)
 
 
 def split_array_to_list(input_array, split_size=30, split_sqrt = 8):
-    output = []
-    for x in xrange(split_sqrt):
-        for y in xrange(split_sqrt):
-            output.append(input_array[x*split_size:(x+1)*split_size,y*split_size:(y+1)*split_size].flatten())
-    assert len(output) == split_sqrt * split_sqrt
-    return array(output)
+    output = np.vsplit(input_array[0:split_size*split_sqrt,0:split_size*split_sqrt],split_sqrt)
+    output = [np.hsplit(block,split_sqrt) for block in output]
+    return output
 
 
-def unsplit_array_from_list(array_list, split_size=30, split_sqrt = 8):
-    # for l in array_list:
-    arr = []
-    for x in xrange(split_sqrt):
-        for y in xrange(split_sqrt):
-            for z in xrange(split_size):
-                arr.extend(array_list[x*split_sqrt+y][z*split_size:z*(split_size+1)])
-    return array(arr)
+def unsplit_array_from_list(array_list):
+    blocks = [np.hstack(block) for block in array_list]
+    return np.vstack(blocks)
+
 
 
 def number_to_layers(num):
@@ -138,40 +138,43 @@ def auto_train(input, layers, iters, rate):
 
     logging.debug("Stage 1) Random starting synaptic weights: ")
     logging.debug(neural_network.print_weights())
-    weights = neural_network.layers[0].synaptic_weights
+    weights = neural_network.layers[0].synaptic_weights.copy()
 
-    neural_network.train(input, input, iters, rate)
+    # make blocks
+    blocks = []
+    for block_list in input:
+        for block in block_list:
+            block = block.flatten()
+            blocks.append(block)
+    blocks = np.array(blocks)
+    neural_network.train(blocks, blocks, iters, rate)
 
-    assert array_equal(weights ,neural_network.layers[0].synaptic_weights)
+    assert not np.array_equal(weights ,neural_network.layers[0].synaptic_weights)
 
     logging.debug("Stage 2) New synaptic weights after training: ")
     logging.debug(neural_network.print_weights())
 
     # Test the neural network with a new situation.
     logging.debug("Stage 3) Evaluating a new situation")
-    output = array([neural_network.think(i)[-1] for i in input])
 
-    # Stretch to fit actual range
-    output *= 255
+    output = neural_network.think(blocks)[-1]
+    diff = output - blocks
+    rms_errors = [sqrt(sum(n*n for n in diff_part)/len(diff_part)) for diff_part in diff]
 
-    assert input.shape == output.shape
-    diff = output - input
-    error_sum = diff.sum()
-    logging.info("total error: " + str(error_sum))
+    logging.info("RMS errors: " + str(rms_errors))
 
-    error_avg = error_sum / (input.shape[0] * input.shape[1])
+    rms_error_avg = sum(rms_errors) / len(rms_errors)
+    logging.info("Averaged RMS errors: " + str(rms_error_avg))
 
-    logging.info("averaged error: " + str(error_avg))
-
-    return neural_network, error_avg
+    return neural_network, rms_error_avg
 
 
 def grid_search(input, labels, iters, rates):
-    min_error = 255
+    min_error = 1
     best_rate = 0
     best_iters = 0
     for i in iters:
-        min_rate_error = 255
+        min_rate_error = 1
         best_rate_for_iter = 0
         for rate in rates:
             logging.info("iterations = " + str(i) + " rate = " + str(rate))
@@ -190,9 +193,10 @@ def grid_search(input, labels, iters, rates):
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--hidden-layer-size", type=int, choices=xrange(900,0),  default=300)
+    parser.add_argument("--hidden-layer-size", type=int, choices=xrange(900,0),  default=600)
     parser.add_argument("-d","--debug",action="store_true")
     parser.add_argument("--lenna",default="lenna.pgm")
+    parser.add_argument("-b","--block-test",action="store_true")
 
     return parser.parse_args()
 
@@ -208,19 +212,44 @@ if __name__ == "__main__":
     lenna_filename = args.lenna
     logging.info("using file=%s"%lenna_filename)
 
-    input_array = read_pgm(lenna_filename)
+    input_array = read_pgm(lenna_filename)[0]
+
+    #normalize input (scale to [0,1])
+    input_array = input_array / 255.0
 
     input_split = split_array_to_list(input_array)
 
-    iters = [600, 6000, 60000]
-    rates = [0.4, 1, 1.5, 2, 2.5, 2.7, 3]
+    #just to see re-assembly of blocks works
+    if args.block_test:
+        new_image_arr = unsplit_array_from_list(input_split)
+        new_image_arr *= 255
+        write_pgm(new_image_arr,"new"+lenna_filename)
+    else:
+        iters = [600, 6000, 60000]
+        rates = [0.4, 1, 1.5, 2, 2.5, 2.7, 3]
 
-    layers = number_to_layers(args.hidden_layer_size)
-    logging.info("Using layers:")
-    logging.info(layers)
+        layers = number_to_layers(args.hidden_layer_size)
+        logging.info("Using layers:")
+        logging.info(layers)
 
-    # grid_search(input_split, layers, iters, rates)
-    net, error = auto_train(input_split, layers, iters[0], rates[0])
-    new_image_pieces = net.think(input_split)[-1] * 255
-    new_image_arr = unsplit_array_from_list(new_image_pieces)
-    write_pgm(new_image_arr,"new"+lenna_filename)
+
+        # grid_search(input_split, layers, iters, rates)
+        net, error = auto_train(input_split, layers, iters[1], rates[3])
+
+        #predict new lenna
+        new_image_pieces = []
+        for block_list in input_split:
+            new_block_list = []
+            for block in block_list:
+                new_block = net.think(block.flatten())[-1]
+
+                #rescale image to 0-255
+                new_block *= 255
+
+                new_block.reshape(30,30)
+
+                new_block_list.append(new_block)
+            new_image_pieces.append(new_block_list)
+
+        new_image_arr = unsplit_array_from_list(new_image_pieces)
+        write_pgm(new_image_arr,"new"+lenna_filename)

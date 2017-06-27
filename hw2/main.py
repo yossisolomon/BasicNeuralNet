@@ -169,31 +169,41 @@ def auto_train(input, layers, iters, rate):
     return neural_network, rms_error_avg
 
 
-def grid_search(input, labels, iters, rates):
+def grid_search(input, hidden_layer_sizes, iters, rates):
     min_error = 1
     best_rate = 0
     best_iters = 0
+    best_net = None
     for i in iters:
         min_rate_error = 1
         best_rate_for_iter = 0
+        best_net_for_iter = None
         for rate in rates:
-            logging.info("iterations = " + str(i) + " rate = " + str(rate))
-            rate_error = auto_train(input, labels, i, rate)[1]
-            if rate_error < min_rate_error:
-                min_rate_error = rate_error
-                best_rate_for_iter = rate
+            for s in hidden_layer_sizes:
+                layers = number_to_layers(s)
+                logging.info("Using layers:")
+                logging.info(layers)
+                logging.info("iterations = " + str(i) + " rate = " + str(rate))
+                net, error = auto_train(input, layers, i, rate)
+                if error < min_rate_error:
+                    min_rate_error = error
+                    best_rate_for_iter = rate
+                    best_net_for_iter = net
         logging.info("best rate for " + str(i) + " iterations is " + str(best_rate_for_iter) + " with error " + str(
             min_rate_error))
         if min_rate_error < min_error:
             min_error = min_rate_error
             best_iters = i
             best_rate = best_rate_for_iter
+            best_net = best_net_for_iter
     logging.info("best error is " + str(min_error) + " for " + str(best_iters) + " iterations and " + str(best_rate) + " rate")
+    return best_net
 
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--hidden-layer-size", type=int, choices=xrange(900,0),  default=600)
+    parser.add_argument("--hidden-layer-sizes", type=int, nargs='+',  default=[30])
+    # parser.add_argument("--hidden-layer-sizes", type=int, nargs='+',  default=[30, 15, 3, 6, 1])
     parser.add_argument("-d","--debug",action="store_true")
     parser.add_argument("--lenna",default="lenna.pgm")
     parser.add_argument("-b","--block-test",action="store_true")
@@ -225,16 +235,13 @@ if __name__ == "__main__":
         new_image_arr *= 255
         write_pgm(new_image_arr,"new"+lenna_filename)
     else:
-        iters = [600, 6000, 60000]
-        rates = [0.4, 1, 1.5, 2, 2.5, 2.7, 3]
+        # iters = [600, 6000, 60000]
+        iters = [6000]
+        # rates = [0.004, 0.001, 0.0015, 0.0002, 0.025, 0.008]
+        rates = [0.004]
 
-        layers = number_to_layers(args.hidden_layer_size)
-        logging.info("Using layers:")
-        logging.info(layers)
-
-
-        # grid_search(input_split, layers, iters, rates)
-        net, error = auto_train(input_split, layers, iters[1], rates[3])
+        net = grid_search(input_split, args.hidden_layer_sizes, iters, rates)
+        # net, error = auto_train(input_split, layers, iters[0], rates[0])
 
         #predict new lenna
         new_image_pieces = []
